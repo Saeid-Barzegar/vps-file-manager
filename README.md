@@ -26,7 +26,7 @@ pnpm dev
 bun dev
 ```
 
-STEP2: run build script to build the project
+STEP_3: run build script to build the project
 
 ```bash
 npm run build
@@ -38,7 +38,7 @@ pnpm build
 bun build
 ```
 
-STEP3: run start script to run the project on your vps
+STEP_4: run start script to run the project on your vps
 ** app needs root credential to read all directories
 ** run it with root credential on the server 
 
