@@ -1,101 +1,135 @@
+"use client";
+
+import { isEmpty } from "lodash";
 import Image from "next/image";
+import { useState, useEffect } from "react";
+import { ContextMenuInterface, ContextMenuType, FileType } from "./types/types";
+import { CONTEXT_MENU_ITEMS } from "./constants/context-menu-items";
+
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+  const contextInitialValue = {
+    show: false,
+    position: {
+      x: 0,
+      y: 0
+    }
+  };
+
+  const [files, setFiles] = useState<FileType[]>([]);
+  const [currentPath, setCurrentPath] = useState<string>("/");
+  const [contextMenu, setContextMenu] = useState<ContextMenuInterface>(contextInitialValue);
+
+  const getFileList = (currentPath: string) => {
+    fetch(`/api/files?path=${encodeURIComponent(currentPath)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const { files } = data
+        console.log({ files })
+        const mainList = files.filter((file: string) => !isEmpty(file) && !file.includes('lrwxrwxrwx') && !file.includes('total'));
+        const mappedFiles = mainList.map((file, index) => {
+          const fileName = file.split(" ").pop();
+          return ({
+            id: index + 1,
+            name: fileName,
+            isFile: file.includes("-rw-r--r--")
+          })
+        })
+        const sorted = mappedFiles.sort((a, b) => a.name > b.name)
+        const folders = sorted.filter(file => !file.isFile);
+        const _files = sorted.filter(file => file.isFile);
+        const finalList = [...folders, ..._files]
+        setFiles(finalList ?? [])
+      })
+      .catch((err) => console.error({ err }));
+  }
+  useEffect(() => {
+    getFileList(currentPath);
+  }, [currentPath]);
+
+  // Prevent right-click default behavior
+  const handleContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    setContextMenu({
+      show: true,
+      position: {
+        x: event.layerX,
+        y: event.layerY
+      }
+    });
+  };
+
+  // Hide menu on click outside
+  const handleClick = () => setContextMenu(contextInitialValue);
+
+  useEffect(() => {
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("click", handleClick);
+
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("click", handleClick);
+    };
+  }, []);
+
+  const onSelectFolderHandler = (pathName: string) => {
+    let newPath = `${currentPath}/${pathName}`;
+    newPath = newPath.replace("//", "/");
+    if (pathName === "." || pathName === "") {
+      newPath = "/";
+    }
+    if (pathName === "..") {
+      const pathParts = currentPath.split("/");
+      pathParts.pop();
+      console.log({ pathName, newPath, pathParts })
+      const isRootRoute = pathParts.length === 1;
+      newPath = isRootRoute ? "/" : pathParts.join("/");
+    }
+    setCurrentPath(newPath)
+  };
+
+  return (
+    <div className="p-5">
+      <h1 className="text-xl font-bold">Linux File Manager</h1>
+      <input
+        type="text"
+        value={currentPath}
+        onChange={(e) => setCurrentPath(e.target.value)}
+        className="border p-2 w-full my-3"
+      />
+      {contextMenu.show && (
+        <ul
+          className={`absolute list-none w-48 bg-slate-100 top-4 left-4 rounded-lg py-2`}
+          style={{ transform: `translate(${contextMenu.position.x}px, ${contextMenu.position.y}px)` }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {CONTEXT_MENU_ITEMS.map((item: ContextMenuType) => (
+            <li key={item.id} className="text-sm">
+              <button
+                className="py-1 px-3 w-full cursor-pointer text-left hover:bg-slate-200"
+                onClick={() => console.log(item, "")}
+              >
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ul className="pl-5 list-none">
+        {files.map((file: FileType) => (
+          <li key={file.id} className="mb-2 pl-2">
+            <button
+              className={`flex ${!file.isFile && 'cursor-pointer'}`}
+              onClick={() => !file.isFile && onSelectFolderHandler(file.name)}>
+              {file.isFile
+                ? <Image src="/file.svg" width={20} height={20} alt="file_icon" />
+                : <Image src="/flat_folder.svg" width={20} height={20} alt="folder_icon" />
+              }
+              <span className={'ml-2'}>{file.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
