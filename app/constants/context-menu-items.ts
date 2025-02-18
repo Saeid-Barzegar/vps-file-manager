@@ -14,4 +14,9 @@ export const CONTEXT_MENU_ITEMS = [
     label: "Delete",
     action: "delete"
   },
+  {
+    id: 3,
+    label: "Download",
+    action: "download"
+  },
 ];

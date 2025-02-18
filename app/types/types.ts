@@ -19,3 +19,11 @@ export interface ContextMenuInterface {
   show: boolean;
   position: PositionType;
 }
+
+export type GetFileListType = (currentPath: string) => Promise<FileType[] | undefined>;
+export type DirectoryChangeHandlerInputType = {
+  pathName: string;
+  currentPath: string;
+};
+
+export type DirectoryChangeHandlerType = (paths: DirectoryChangeHandlerInputType) => string;

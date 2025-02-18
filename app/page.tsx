@@ -1,96 +1,88 @@
 "use client";
-
-import { isEmpty } from "lodash";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { ContextMenuInterface, ContextMenuType, FileType } from "./types/types";
 import { CONTEXT_MENU_ITEMS } from "./constants/context-menu-items";
+import { directoryChangeHandler, getFileList } from "./helpers/fundtions";
 
+const contextInitialValue = {
+  show: false,
+  position: { x: 0, y: 0 },
+};
 
 export default function Home() {
 
-  const contextInitialValue = {
-    show: false,
-    position: {
-      x: 0,
-      y: 0
-    }
-  };
-
   const [files, setFiles] = useState<FileType[]>([]);
+  const [isPending, setIsPending] = useState<boolean>(false);
   const [currentPath, setCurrentPath] = useState<string>("/");
   const [contextMenu, setContextMenu] = useState<ContextMenuInterface>(contextInitialValue);
+  const [selectedItem, setSelectedItem] = useState<number>(-1);
 
-  const getFileList = (currentPath: string) => {
-    fetch(`/api/files?path=${encodeURIComponent(currentPath)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const { files } = data
-        console.log({ files })
-        const mainList = files.filter((file: string) => !isEmpty(file) && !file.includes('lrwxrwxrwx') && !file.includes('total'));
-        const mappedFiles = mainList.map((file, index) => {
-          const fileName = file.split(" ").pop();
-          return ({
-            id: index + 1,
-            name: fileName,
-            isFile: file.includes("-rw-r--r--")
-          })
-        })
-        const sorted = mappedFiles.sort((a, b) => a.name > b.name)
-        const folders = sorted.filter(file => !file.isFile);
-        const _files = sorted.filter(file => file.isFile);
-        const finalList = [...folders, ..._files]
-        setFiles(finalList ?? [])
-      })
-      .catch((err) => console.error({ err }));
-  }
   useEffect(() => {
-    getFileList(currentPath);
+    setIsPending(true)
+    getFileList(currentPath)
+      .then((data: FileType[] | undefined) => {
+        setFiles(data || [])
+      })
+      .finally(() => {
+        setIsPending(false)
+      });
   }, [currentPath]);
 
   // Prevent right-click default behavior
-  const handleContextMenu = (event: MouseEvent) => {
+  const handleContextMenu = (event: React.MouseEvent<HTMLButtonElement>, fileId: number) => {
     event.preventDefault();
+    setSelectedItem(fileId)
     setContextMenu({
       show: true,
       position: {
-        x: event.layerX,
-        y: event.layerY
+        x: event.pageX,
+        y: event.pageY,
       }
     });
   };
 
+  const handleResetState = () => {
+    setContextMenu(contextInitialValue)
+    setSelectedItem(-1)
+  }
+
   // Hide menu on click outside
-  const handleClick = () => setContextMenu(contextInitialValue);
-
-  useEffect(() => {
-    document.addEventListener("contextmenu", handleContextMenu);
-    document.addEventListener("click", handleClick);
-
-    return () => {
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("click", handleClick);
-    };
-  }, []);
+  const handleClick = () => {
+    if (contextMenu.show) {
+      handleResetState();
+    }
+  };
 
   const onSelectFolderHandler = (pathName: string) => {
-    let newPath = `${currentPath}/${pathName}`;
-    newPath = newPath.replace("//", "/");
-    if (pathName === "." || pathName === "") {
-      newPath = "/";
-    }
-    if (pathName === "..") {
-      const pathParts = currentPath.split("/");
-      pathParts.pop();
-      console.log({ pathName, newPath, pathParts })
-      const isRootRoute = pathParts.length === 1;
-      newPath = isRootRoute ? "/" : pathParts.join("/");
-    }
+    const newPath = directoryChangeHandler({ pathName, currentPath });
     setCurrentPath(newPath)
   };
 
+  const handleRename = (filePath: string) => {
+    console.log("handleRename >>", { filePath, selectedItem })
+    handleResetState();
+  };
+
+  const handleMove = (filePath: string) => {
+    console.log("handleMove >>", { filePath, selectedItem })
+    handleResetState();
+  };
+
+  const handleDelete = (filePath: string) => {
+    console.log("handleDelete >>", { filePath, selectedItem })
+    setContextMenu(contextInitialValue)
+    setSelectedItem(-1)
+  };
+
+  const handleDownload = (filePath: string) => {
+    console.log("handleDownload >>", { filePath, selectedItem })
+    setContextMenu(contextInitialValue)
+    setSelectedItem(-1)
+  };
+
   return (
-    <div className="p-5">
+    <div className="p-5 z-0">
       <h1 className="text-xl font-bold">Linux File Manager</h1>
       <input
         type="text"
@@ -104,10 +96,28 @@ export default function Home() {
           style={{ transform: `translate(${contextMenu.position.x}px, ${contextMenu.position.y}px)` }}
         >
           {CONTEXT_MENU_ITEMS.map((item: ContextMenuType) => (
-            <li key={item.id} className="text-sm">
+            <li key={item.id} className="text-sm z-50">
               <button
                 className="py-1 px-3 w-full cursor-pointer text-left hover:bg-slate-200"
-                onClick={() => console.log(item, "")}
+                onClick={() => {
+                  switch (item.action) {
+                    case "rename":
+                      handleRename(currentPath)
+                      break;
+                    case "move":
+                      handleMove(currentPath)
+                      break;
+                    case "delete":
+                      handleDelete(currentPath)
+                      break;
+                    case "download":
+                      handleDownload(currentPath)
+                      break;
+                    default:
+                      break;
+                  }
+                }}
+                onBlur={() => setContextMenu(contextInitialValue)}
               >
                 {item.label}
               </button>
@@ -115,21 +125,27 @@ export default function Home() {
           ))}
         </ul>
       )}
-      <ul className="pl-5 list-none">
-        {files.map((file: FileType) => (
-          <li key={file.id} className="mb-2 pl-2">
-            <button
-              className={`flex ${!file.isFile && 'cursor-pointer'}`}
-              onClick={() => !file.isFile && onSelectFolderHandler(file.name)}>
-              {file.isFile
-                ? <Image src="/file.svg" width={20} height={20} alt="file_icon" />
-                : <Image src="/flat_folder.svg" width={20} height={20} alt="folder_icon" />
-              }
-              <span className={'ml-2'}>{file.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {isPending
+        ? <p>Loading...</p>
+        : (
+          <ul className="pl-5 list-none">
+            {files.map((file: FileType) => (
+              <li key={file.id} className=" pl-2">
+                <button
+                  className={`flex py-1 px-2 justify-start items-center rounded-md ${!file.isFile && 'cursor-pointer'} ${selectedItem === file.id && 'bg-slate-100'}`}
+                  onClick={() => !file.isFile && onSelectFolderHandler(file.name)}
+                  onContextMenu={(event: React.MouseEvent<HTMLButtonElement>) => handleContextMenu(event, file.id)}
+                >
+                  {file.isFile
+                    ? <Image src="/file.svg" width={20} height={20} alt="file_icon" />
+                    : <Image src="/flat_folder.svg" width={20} height={20} alt="folder_icon" />
+                  }
+                  <span className={'ml-2'}>{file.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
     </div>
   );
 }
